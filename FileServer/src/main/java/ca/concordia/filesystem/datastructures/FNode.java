@@ -9,4 +9,22 @@ public class FNode {
         this.blockIndex = blockIndex;
         this.next = -1;
     }
+
+    // Getters and Setter
+
+    public int getBlockIndex(){
+        return blockIndex;
+    }
+
+    public int getNext(){
+        return next;
+    }
+
+    public void setBlockIndex(int blockIndex){
+        this.blockIndex = blockIndex;
+    }
+
+    public void setNext(int next){
+        this.next = next;
+    }
 }

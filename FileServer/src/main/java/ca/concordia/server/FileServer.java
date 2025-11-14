@@ -42,6 +42,10 @@ public class FileServer {
                                 writer.println("SUCCESS: File '" + parts[1] + "' created.");
                                 writer.flush();
                                 break;
+                            case "READ":
+                            case "WRITE":
+                            case "DELETE":
+                            case "LIST":
                             //TODO: Implement other commands READ, WRITE, DELETE, LIST
                             case "QUIT":
                                 writer.println("SUCCESS: Disconnecting.");
