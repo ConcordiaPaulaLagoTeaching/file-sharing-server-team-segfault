@@ -5,6 +5,7 @@ import ca.concordia.filesystem.datastructures.FNode;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.Arrays;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class FileSystemManager {
@@ -79,28 +80,34 @@ public class FileSystemManager {
             //TODO Initialize the file system
 
         } else {
-            throw new IllegalStateException("FileSystemManager is already initialized.");
+            throw new IllegalStateException("FileSystemManager is already initialized.\n");
         }
 
     }
 
     public void createFile(String fileName) throws Exception {
- 
-        if (inodeTable[MAXFILES - 1] != null){
-            throw new Exception("Too many files in filesystem");
+
+        for (int i = 0; i < MAXFILES; i++){
+
+            if (inodeTable[i].getFilename() == fileName){
+                throw new Exception("This file already exists\n");
+            }
         }
-        else{
 
-            for (int i = 1; i < MAXFILES; i++){
-                if (inodeTable[i] == null){
-                    inodeTable[i] = new FEntry(fileName, (short) 0, (short) i);
+        for (int i = 0; i < MAXFILES; i++){
 
-                    
-                    break;
-                }
-                else{
-                    continue;
-                }
+            if (inodeTable[i] == null){
+                inodeTable[i] = new FEntry(fileName, (short) 0, (short) (i + 1));
+                fnodeTable[i + 1].setBlockIndex(i + 1);
+                // Even if the file is empty, the freeBlockList should still reflect that the block is being used by a file
+                freeBlockList[i + 1] = false;
+                break;
+            }
+            else if (i == MAXFILES - 1){
+                throw new Exception("Filesystem is full!\n");
+            }
+            else{
+                continue;
             }
         }
 
@@ -109,22 +116,103 @@ public class FileSystemManager {
 
 
     public void deleteFile(String fileName) throws Exception {
+
+        for (int i = 0; i < MAXFILES; i++){
+
+            if(inodeTable[i].getFilename() == fileName){
+
+
+                inodeTable[i] = null;
+            }
+
+        }
+
+
         // TODO
-        throw new UnsupportedOperationException("Method not implemented yet.");
+        // throw new UnsupportedOperationException("Method not implemented yet.");
     }
 
-    public void writeFile(String fileName) throws Exception {
+    public int findNextFreeBlockIndex(int currentIndex){
+
+        for (int i = currentIndex; i < MAXBLOCKS; i++){
+            if (freeBlockList[i] == true){
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    public void writeFile(String fileName, byte[] contents) throws Exception {
+
+        int freeBlocks = 0;
+        int numOfFileblocks = (int) Math.ceil(contents.length / BLOCK_SIZE);
+
+        for (int i = 0; i < MAXBLOCKS; i++){
+
+            if (freeBlockList[i] == true){
+                freeBlocks++;
+            }
+        }
+
+        int firstBlockIndex = 0;
+
+        if (freeBlocks >= numOfFileblocks){
+
+            for (int i = 0; i < MAXFILES; i++){
+
+                if (inodeTable[i].getFilename() == fileName){
+
+                    firstBlockIndex = fnodeTable[inodeTable[i].getFirstBlock()].getBlockIndex();
+
+                }else if (i == MAXFILES - 1){
+
+                    throw new Exception("ERROR: file " + fileName + "does not exist\n");
+                }
+            }
+
+            int fileIndex = firstBlockIndex;
+            int start = 0;
+            int end = Math.min(contents.length, BLOCK_SIZE);
+            int numOfBlocksWritten = 0;
+            int nextFreeBlockIndex;
+
+            for (int i = 0; i < MAXBLOCKS; i++){
+
+                if (freeBlockList[i] == true && numOfBlocksWritten < numOfFileblocks){
+
+                    byte[] slice = Arrays.copyOfRange(contents, start, end);
+                    disk.seek(fileIndex * BLOCK_SIZE);
+                    disk.write(slice);
+                    
+                    start = end;
+                    end = Math.min(contents.length, end + BLOCK_SIZE);
+
+                    nextFreeBlockIndex = findNextFreeBlockIndex(i);
+                    
+                    fnodeTable[i].setBlockIndex(i);
+                    if (numOfBlocksWritten != numOfFileblocks - 1) {fnodeTable[i].setNext(nextFreeBlockIndex);}
+                    freeBlockList[i] = false;
+                    
+                    numOfBlocksWritten++;
+                }
+            }
+        }
+        else{
+            throw new Exception("ERROR: file too large!\n");
+        }        
+
         // TODO
-        throw new UnsupportedOperationException("Method not implemented yet.");
+        //throw new UnsupportedOperationException("Method not implemented yet.");
     }
     
     public byte[] readFile(String fileName) throws Exception {
         // TODO
-        throw new UnsupportedOperationException("Method not implemented yet.");
+        //throw new UnsupportedOperationException("Method not implemented yet.");
     }
 
     public String[] listFiles() throws Exception {
         // TODO
-        throw new UnsupportedOperationException("Method not implemented yet.");
+        //throw new UnsupportedOperationException("Method not implemented yet.");
     }
 }
