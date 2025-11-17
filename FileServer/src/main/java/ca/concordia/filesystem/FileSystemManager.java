@@ -30,10 +30,8 @@ public class FileSystemManager {
         if(instance == null) {
 
             try {
-
                 disk = new RandomAccessFile("filesystem", "rw");
                 
-
                 // Initialize FNode table
                 int numOfMetadataBlocks = (int) Math.ceil(METADATA_SIZE / BLOCK_SIZE);
 
@@ -110,26 +108,16 @@ public class FileSystemManager {
                 continue;
             }
         }
-
-        // throw new UnsupportedOperationException("Method not implemented yet.");
     }
 
 
     public void deleteFile(String fileName) throws Exception {
 
-        for (int i = 0; i < MAXFILES; i++){
+        int fileFEntryIndex = findFileFEntryIndex(fileName);
 
-            if(inodeTable[i].getFilename() == fileName){
+        writeZeroes(fileFEntryIndex);
 
-
-                inodeTable[i] = null;
-            }
-
-        }
-
-
-        // TODO
-        // throw new UnsupportedOperationException("Method not implemented yet.");
+        inodeTable[fileFEntryIndex] = null;
     }
 
     public int findNextFreeBlockIndex(int currentIndex){
@@ -139,14 +127,12 @@ public class FileSystemManager {
                 return i;
             }
         }
-
         return -1;
     }
 
-    public void writeFile(String fileName, byte[] contents) throws Exception {
+    public int numFreeBlocks(){
 
         int freeBlocks = 0;
-        int numOfFileblocks = (int) Math.ceil(contents.length / BLOCK_SIZE);
 
         for (int i = 0; i < MAXBLOCKS; i++){
 
@@ -155,64 +141,133 @@ public class FileSystemManager {
             }
         }
 
-        int firstBlockIndex = 0;
+        return freeBlocks;
+    }
+    
+    public void writeZeroes(int fileIndex) throws Exception{
 
-        if (freeBlocks >= numOfFileblocks){
+        int blockIndex = inodeTable[fileIndex].getFirstBlock();
+        int numOfFileBlocks = (int) Math.ceil(inodeTable[fileIndex].getFilesize() / BLOCK_SIZE);
+        int numOfFileBlocksWritten = 0;
+        byte[] zeroes = new byte[BLOCK_SIZE];
+        int temp;
 
-            for (int i = 0; i < MAXFILES; i++){
+        while(numOfFileBlocksWritten < numOfFileBlocks){
+            disk.seek(blockIndex * BLOCK_SIZE);
+            disk.write(zeroes);
 
-                if (inodeTable[i].getFilename() == fileName){
+            temp = blockIndex;
+            blockIndex = fnodeTable[temp].getNext();
 
-                    firstBlockIndex = fnodeTable[inodeTable[i].getFirstBlock()].getBlockIndex();
+            fnodeTable[temp].setBlockIndex(-temp);
+            fnodeTable[temp].setNext(-1);
+            freeBlockList[temp] = true;
+            
+            numOfFileBlocksWritten++;
+        }
 
-                }else if (i == MAXFILES - 1){
+        inodeTable[fileIndex].setFilesize((short) 0);
+    };
 
-                    throw new Exception("ERROR: file " + fileName + "does not exist\n");
-                }
+    public int findFileFEntryIndex(String fileName) throws Exception{
+        
+        for (int i = 0; i < MAXFILES; i++){
+
+            if (inodeTable[i].getFilename() == fileName){
+
+                return i;
+
+            }else if (i == MAXFILES - 1){
+
+                throw new Exception("ERROR: file " + fileName + "does not exist\n");
             }
+        }
 
-            int fileIndex = firstBlockIndex;
+        return -1;
+    }
+
+    public void writeFile(String fileName, byte[] contents) throws Exception {
+
+        int fileFEntryIndex = findFileFEntryIndex(fileName);
+        int freeBlocks = numFreeBlocks();
+        
+        int numOfCurrentFileBlocks = (int) Math.ceil(inodeTable[fileFEntryIndex].getFilesize() / BLOCK_SIZE);
+        int numOfFutureFileBlocks = (int) Math.ceil(contents.length / BLOCK_SIZE);
+
+        if (freeBlocks + numOfCurrentFileBlocks >= numOfFutureFileBlocks){
+
+            writeZeroes(fileFEntryIndex);
+
+            int blockIndex = inodeTable[fileFEntryIndex].getFirstBlock();
             int start = 0;
             int end = Math.min(contents.length, BLOCK_SIZE);
             int numOfBlocksWritten = 0;
-            int nextFreeBlockIndex;
 
             for (int i = 0; i < MAXBLOCKS; i++){
 
-                if (freeBlockList[i] == true && numOfBlocksWritten < numOfFileblocks){
+                if (freeBlockList[i] == true && numOfBlocksWritten < numOfFutureFileBlocks){
 
                     byte[] slice = Arrays.copyOfRange(contents, start, end);
-                    disk.seek(fileIndex * BLOCK_SIZE);
+                    disk.seek(blockIndex * BLOCK_SIZE);
                     disk.write(slice);
                     
+                    blockIndex = findNextFreeBlockIndex(i);
+                    fnodeTable[i].setBlockIndex(i);
+
+                    if (numOfBlocksWritten != numOfFutureFileBlocks - 1) {fnodeTable[i].setNext(blockIndex);}
+
                     start = end;
                     end = Math.min(contents.length, end + BLOCK_SIZE);
-
-                    nextFreeBlockIndex = findNextFreeBlockIndex(i);
-                    
-                    fnodeTable[i].setBlockIndex(i);
-                    if (numOfBlocksWritten != numOfFileblocks - 1) {fnodeTable[i].setNext(nextFreeBlockIndex);}
                     freeBlockList[i] = false;
-                    
                     numOfBlocksWritten++;
                 }
             }
+            
+            inodeTable[fileFEntryIndex].setFilesize((short) contents.length);
         }
         else{
             throw new Exception("ERROR: file too large!\n");
         }        
-
-        // TODO
-        //throw new UnsupportedOperationException("Method not implemented yet.");
     }
     
     public byte[] readFile(String fileName) throws Exception {
-        // TODO
-        //throw new UnsupportedOperationException("Method not implemented yet.");
+
+        int fileIndex = findFileFEntryIndex(fileName);
+        int fileSize = inodeTable[fileIndex].getFilesize();
+        int blockIndex = inodeTable[fileIndex].getFirstBlock();
+        int numBlocksInFile = (int) Math.ceil(fileSize / BLOCK_SIZE);
+
+        byte[] contents = new byte[fileSize];
+        byte[] bytesToRead = new byte[BLOCK_SIZE];
+
+        for (int i = 0; i < numBlocksInFile; i++){
+
+            disk.seek(blockIndex * BLOCK_SIZE);
+
+            if (i == numBlocksInFile - 1){
+
+                bytesToRead = new byte[fileSize % BLOCK_SIZE];
+            }
+
+            disk.read(bytesToRead);
+
+            System.arraycopy(bytesToRead, 0, contents, i * BLOCK_SIZE, bytesToRead.length);
+            blockIndex = fnodeTable[blockIndex].getNext();
+        }        
+        
+        return contents;
     }
 
-    public String[] listFiles() throws Exception {
-        // TODO
-        //throw new UnsupportedOperationException("Method not implemented yet.");
+    public String[] listFiles(){
+        
+        int numFiles = inodeTable.length;
+        String[] files = new String[numFiles];
+
+        for (int i = 0; i < numFiles; i++){
+
+            files[i] = inodeTable[i].getFilename();
+        }
+
+        return files;
     }
 }
